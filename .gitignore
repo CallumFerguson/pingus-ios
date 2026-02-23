@@ -18,3 +18,8 @@
 /pingus-nice
 /result
 /result-[0-9]
+
+# Windows non-Nix build artifacts
+/deps/
+/build-deps/
+/vcpkg_installed/

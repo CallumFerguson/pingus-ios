@@ -1,0 +1,21 @@
+{
+  "name": "pingus",
+  "version-string": "0.8.0",
+  "description": "A free Lemmings clone",
+  "dependencies": [
+    "sdl2",
+    "sdl2-image",
+    "libpng",
+    "libsigcpp",
+    "fmt",
+    "glm",
+    "openal-soft",
+    "libogg",
+    "libvorbis",
+    "mpg123",
+    "libmodplug",
+    "opus",
+    "opusfile",
+    "pkgconf"
+  ]
+}
