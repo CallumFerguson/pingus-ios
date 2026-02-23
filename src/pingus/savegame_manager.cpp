@@ -1,0 +1,158 @@
+// Pingus - A free Lemmings clone
+// Copyright (C) 2002 Ingo Ruhnke <grumbel@gmail.com>
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+#include "pingus/savegame_manager.hpp"
+
+#include <sstream>
+#include <assert.h>
+
+#include <logmich/log.hpp>
+
+#include "util/reader.hpp"
+#include "util/writer.hpp"
+#include "util/system.hpp"
+
+namespace pingus {
+
+SavegameManager* SavegameManager::instance_ = nullptr;
+
+SavegameManager*
+SavegameManager::instance()
+{
+  assert(instance_);
+  return instance_;
+}
+
+SavegameManager::SavegameManager(std::string const& arg_filename) :
+  filename(System::get_userdir() + arg_filename),
+  savegames()
+{
+  assert(instance_ == nullptr);
+  instance_ = this;
+
+  if (!System::exist(filename))
+  {
+    log_info("{}: savegame file not found", filename);
+  }
+  else
+  {
+    auto doc = ReaderDocument::from_file(filename);
+    if (doc.get_name() != "pingus-savegame")
+    {
+      log_error("{}: not a 'pingus-savegame' file", filename);
+    }
+    else
+    {
+      ReaderCollection levels_collection;
+      doc.get_mapping().read("levels", levels_collection);
+      for(auto const& level_object : levels_collection.get_objects())
+      {
+        auto savegame = std::make_unique<Savegame>(level_object.get_mapping());
+
+        SavegameTable::iterator it = find(savegame->get_filename());
+        if (it != savegames.end())
+        {
+          // overwrite duplicates, shouldn't happen, but harmless
+          log_info("name collision: {}", savegame->get_filename());
+          *it = std::move(savegame);
+        }
+        else
+        {
+          savegames.push_back(std::move(savegame));
+        }
+      }
+    }
+  }
+}
+
+SavegameManager::~SavegameManager()
+{
+  savegames.clear();
+  instance_ = nullptr;
+}
+
+Savegame*
+SavegameManager::get(std::string const& filename_)
+{
+  SavegameTable::iterator i = find(filename_);
+  if (i == savegames.end())
+    return nullptr;
+  else
+    return (*i).get();
+}
+
+void
+SavegameManager::store(Savegame const& arg_savegame)
+{
+  auto savegame = std::make_unique<Savegame>(arg_savegame);
+  SavegameTable::iterator i = find(savegame->get_filename());
+  if (i == savegames.end())
+  {
+    // don't know anything about the savegame
+    savegames.push_back(std::move(savegame));
+  }
+  else
+  {
+    // already have such a savegame
+    if ((*i)->get_status() == Savegame::FINISHED &&
+        savegame->get_status() == Savegame::ACCESSIBLE)
+    {
+      // saved savegame is better then new game
+    }
+    else
+    {
+      // new game is better or equal, save it
+      *i = std::move(savegame);
+    }
+  }
+
+  flush();
+}
+
+SavegameManager::SavegameTable::iterator
+SavegameManager::find(std::string const& filename_)
+{
+  //log_info("SavegameManager::find: \"" << filename << "\"");
+
+  for(SavegameTable::iterator i = savegames.begin();
+      i != savegames.end(); ++i)
+    if ((*i)->get_filename() == filename_)
+      return i;
+
+  return savegames.end();
+}
+
+void
+SavegameManager::flush()
+{
+  std::ostringstream out;
+  Writer writer(out);
+
+  writer.begin_object("pingus-savegame");
+  writer.begin_collection("levels");
+  for(SavegameTable::iterator i = savegames.begin(); i != savegames.end(); ++i)
+  {
+    (*i)->write_sexpr(writer);
+  }
+  writer.end_collection();
+  writer.end_object(); // pingus-savegame
+
+  System::write_file(filename, out.str());
+}
+
+} // namespace pingus
+
+/* EOF */
